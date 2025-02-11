@@ -126,8 +126,8 @@ def _(aes_pd_raw, crop_slider):
 
 @app.cell
 def _(mo, np):
-    whit_p = mo.ui.slider(steps=np.logspace(-5, -0.001, 50).tolist())
-    whit_lam = mo.ui.slider(steps=np.logspace(-2, 8, 50).tolist())
+    whit_p = mo.ui.slider(steps=np.logspace(-5, -0.001, 100).tolist())
+    whit_lam = mo.ui.slider(steps=np.logspace(-2, 8, 100).tolist())
     whit_diff = mo.ui.slider(steps=np.arange(2, 5).tolist())
 
     gaussian_filter_on = mo.ui.radio(options=['On', 'Off'], value='On', label='Apply Gaussian Filter:')
@@ -291,7 +291,6 @@ def _(
         showlegend=True
     )
 
-    # Display the plot using marimo
     plot = mo.ui.plotly(fig1)
     mo.hstack([plot])
     return (
@@ -309,6 +308,85 @@ def _(
         rawpeaks,
         widths,
     )
+
+
+@app.cell
+def _(aes_pd, mo):
+    # make downloadable table with minimal data
+    min_cols = ["Kinetic energy / eV", "Background corrected counts"]
+    aes_min = aes_pd[min_cols].copy()
+    table = mo.ui.table(data=aes_min, page_size=10)
+    mo.vstack([mo.md('Table of the cropped and baseline corrected data:'), table])
+    return aes_min, min_cols, table
+
+
+@app.cell
+def _(mo):
+    # Make a button for adding the minimal data to a collecting plot that does not reload after adding a new file
+    data_collection = {}
+    add_button = mo.ui.run_button(label='Add to collecting plot')
+    mo.vstack([add_button, mo.md("¡Hint: limited to one plot per filename")])
+    return add_button, data_collection
+
+
+@app.cell
+def _(add_button, aes_min, data_collection, filename):
+    # Data collector
+    if add_button.value:
+        data_collection[filename] = aes_min.copy()
+    return
+
+
+@app.cell
+def _(add_button, data_collection, fig1, go, make_subplots, mo, pd):
+    # plot the data_collection
+    import plotly.express as px
+    colors = px.colors.qualitative.Plotly
+
+    fig2 = make_subplots()
+
+    if data_collection and add_button.value:
+        for i, (key, value) in enumerate(data_collection.items()):
+            c = colors[i % len(colors)]  # pick a color
+            # Plot original
+            fig2.add_trace(
+                go.Scatter(
+                    x=value["Kinetic energy / eV"],
+                    y=value["Background corrected counts"],
+                    mode="lines+markers",
+                    opacity=0.3,
+                    name=key,
+                    line=dict(color=c),
+                    marker=dict(color=c)
+                )
+            )
+            # Plot smoothed
+            y_smooth = pd.Series(value["Background corrected counts"]).rolling(window=15, center=True).mean()
+            fig2.add_trace(
+                go.Scatter(
+                    x=value["Kinetic energy / eV"],
+                    y=y_smooth,
+                    mode="lines",
+                    name=f"{key}_smoothed",
+                    line=dict(color=c, width=4)
+                )
+            )
+        fig2.update()
+
+    fig1.update_xaxes(title_text='Kinetic Energy (eV)', row=1, col=1)
+    fig1.update_yaxes(title_text='Baseline Corrected Counts', row=1, col=1)
+
+    fig2.update_layout(
+        title='Baseline Corrected AES Data Collection ',
+        height=700,  # Adjust the figure height as needed
+        width=1200,
+        legend=dict(x=1.01, y=0.99),  # Position the legend
+        showlegend=True
+    )
+
+    plot2 = mo.ui.plotly(fig2)
+    mo.hstack([plot2])
+    return c, colors, fig2, i, key, plot2, px, value, y_smooth
 
 
 @app.cell
