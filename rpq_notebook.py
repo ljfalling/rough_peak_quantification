@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.10.9"
+__generated_with = "0.10.14"
 app = marimo.App(width="medium")
 
 
@@ -102,9 +102,26 @@ def _(file_input, filepath):
             self.aes_data = np.column_stack((x_values, y_values))
 
     vms = AesStaib(filepath)
-    aes_pd = pd.DataFrame(vms.aes_data, columns=['Kinetic energy / eV', 'Counts'])
-    print('data dimensions: ', aes_pd.shape)
-    return AesStaib, Vamas, aes_pd, filename, np, parser, pd, vms
+    aes_pd_raw = pd.DataFrame(vms.aes_data, columns=['Kinetic energy / eV', 'Counts'])
+    print('data dimensions: ', aes_pd_raw.shape)
+    return AesStaib, Vamas, aes_pd_raw, filename, np, parser, pd, vms
+
+
+@app.cell
+def _(aes_pd_raw, mo):
+    # crop the data
+    crop_slider = mo.ui.range_slider(steps=aes_pd_raw['Kinetic energy / eV'].tolist(), full_width=True)
+    mo.vstack([
+        mo.md('Crop the kinetic energy range:'),
+        crop_slider
+        ])
+    return (crop_slider,)
+
+
+@app.cell
+def _(aes_pd_raw, crop_slider):
+    aes_pd = aes_pd_raw[(aes_pd_raw['Kinetic energy / eV'] >= crop_slider.value[0]) & (aes_pd_raw['Kinetic energy / eV'] <= crop_slider.value[1])]
+    return (aes_pd,)
 
 
 @app.cell
