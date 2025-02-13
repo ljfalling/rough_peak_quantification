@@ -317,15 +317,13 @@ def _(aes_pd, mo):
     return min_cols, table
 
 
-app._unparsable_cell(
-    r"""
+@app.cell
+def _(mo):
     # Make a button for adding the minimal data to a collecting plot that does not reload after adding a new file
     data_collection = {}
     add_button = mo.ui.run_button(label='Add to collecting plot')
-    mo.vstack([add_button, mo.md(\"¡Hint: limited to one plot per filename\")])d
-    """,
-    name="_"
-)
+    mo.vstack([add_button, mo.md("¡Hint: limited to one plot per filename")])
+    return add_button, data_collection
 
 
 @app.cell
