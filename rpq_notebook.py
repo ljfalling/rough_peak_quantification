@@ -217,8 +217,8 @@ def _(
     noise_perc = noise_perc_slider.value
 
     # Peak finding
-    rawpeaks = find_peaks_cwt(Y_contrast, widths, noise_perc=noise_perc)
-    peak_heights = aes_pd['Background corrected counts'][rawpeaks]
+    #rawpeaks = find_peaks_cwt(Y_contrast, widths, noise_perc=noise_perc)
+    #peak_heights = aes_pd['Background corrected counts'][rawpeaks]
 
     # Create the figure with two vertically stacked subplots
     fig1 = make_subplots(
@@ -266,16 +266,16 @@ def _(
         row=1, col=2
     )
 
-    fig1.add_trace(
-        go.Scatter(
-            x=aes_pd["Kinetic energy / eV"][rawpeaks],
-            y=peak_heights,
-            mode='markers',
-            name='Peaks',
-            marker=dict(color='black', symbol='circle', size=8)
-        ),
-        row=1, col=2
-    )
+    #fig1.add_trace(
+    #    go.Scatter(
+    #        x=aes_pd["Kinetic energy / eV"][rawpeaks],
+    #        y=peak_heights,
+    #        mode='markers',
+    #        name='Peaks',
+    #        marker=dict(color='black', symbol='circle', size=8)
+    #    ),
+    #    row=1, col=2
+    #)
 
     # Update x-axis and y-axis titles
     fig1.update_xaxes(title_text='Kinetic Energy (eV)', row=2, col=1)
@@ -302,10 +302,8 @@ def _(
         go,
         make_subplots,
         noise_perc,
-        peak_heights,
         plot,
         pybaselines,
-        rawpeaks,
         widths,
     )
 
@@ -314,33 +312,38 @@ def _(
 def _(aes_pd, mo):
     # make downloadable table with minimal data
     min_cols = ["Kinetic energy / eV", "Background corrected counts"]
-    aes_min = aes_pd[min_cols].copy()
-    table = mo.ui.table(data=aes_min, page_size=10)
-    mo.vstack([mo.md('Table of the cropped and baseline corrected data:'), table])
-    return aes_min, min_cols, table
+    table = mo.ui.table(data=aes_pd[min_cols], page_size=5)
+    mo.vstack([mo.md('**Table of the cropped and baseline corrected data:**'), table])
+    return min_cols, table
 
 
-@app.cell
-def _(mo):
+app._unparsable_cell(
+    r"""
     # Make a button for adding the minimal data to a collecting plot that does not reload after adding a new file
     data_collection = {}
     add_button = mo.ui.run_button(label='Add to collecting plot')
-    mo.vstack([add_button, mo.md("¡Hint: limited to one plot per filename")])
-    return add_button, data_collection
+    mo.vstack([add_button, mo.md(\"¡Hint: limited to one plot per filename\")])d
+    """,
+    name="_"
+)
 
 
 @app.cell
-def _(add_button, aes_min, data_collection, filename):
+def _(add_button, aes_pd, data_collection, filename, min_cols):
     # Data collector
     if add_button.value:
-        data_collection[filename] = aes_min.copy()
-    return
+        fn_min_df = aes_pd[min_cols].copy()
+        fn_min_df['filename'] = filename
+        fn_min_df = fn_min_df.set_index("filename", append=True)
+        data_collection[filename] = fn_min_df
+    return (fn_min_df,)
 
 
 @app.cell
 def _(add_button, data_collection, fig1, go, make_subplots, mo, pd):
     # plot the data_collection
     import plotly.express as px
+
     colors = px.colors.qualitative.Plotly
 
     fig2 = make_subplots()
@@ -351,8 +354,8 @@ def _(add_button, data_collection, fig1, go, make_subplots, mo, pd):
             # Plot original
             fig2.add_trace(
                 go.Scatter(
-                    x=value["Kinetic energy / eV"],
-                    y=value["Background corrected counts"],
+                    x=value['Kinetic energy / eV'],
+                    y=value['Background corrected counts'],
                     mode="lines+markers",
                     opacity=0.3,
                     name=key,
@@ -360,11 +363,14 @@ def _(add_button, data_collection, fig1, go, make_subplots, mo, pd):
                     marker=dict(color=c)
                 )
             )
-            # Plot smoothed
-            y_smooth = pd.Series(value["Background corrected counts"]).rolling(window=15, center=True).mean()
+            # smoothed line to guide the eye
+            window_size = 15
+            y_smooth = pd.Series(value['Background corrected counts']).rolling(window=window_size, center=True).mean()
+            data_collection[key]['bcc_rolling_mean'] = y_smooth.copy()
+
             fig2.add_trace(
                 go.Scatter(
-                    x=value["Kinetic energy / eV"],
+                    x=value['Kinetic energy / eV'],
                     y=y_smooth,
                     mode="lines",
                     name=f"{key}_smoothed",
@@ -386,7 +392,22 @@ def _(add_button, data_collection, fig1, go, make_subplots, mo, pd):
 
     plot2 = mo.ui.plotly(fig2)
     mo.hstack([plot2])
-    return c, colors, fig2, i, key, plot2, px, value, y_smooth
+    return c, colors, fig2, i, key, plot2, px, value, window_size, y_smooth
+
+
+@app.cell
+def _(data_collection, filename, mo, pd):
+    if len(data_collection) > 1:
+        data_collection_df = pd.concat(data_collection.values())
+        data_collection_table = mo.ui.table(data=data_collection_df, page_size=5)
+    else:
+        data_collection_table = mo.ui.table(data=data_collection[filename], page_size=5)
+
+    mo.vstack([
+        mo.md("**Download the following table for the whole data collection as plotted. Uses filenames as indexes**"),
+        data_collection_table
+    ])
+    return data_collection_df, data_collection_table
 
 
 @app.cell
