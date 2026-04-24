@@ -318,6 +318,23 @@ def _(aes_pd, mo):
 
 
 @app.cell
+def _(aes_pd, filename, mo):
+    import io
+    _xy_bytes = io.BytesIO()
+    aes_pd[["Kinetic energy / eV", "Background corrected counts"]].to_csv(
+        _xy_bytes, sep="\t", index=False, header=False
+    )
+    xy_export = mo.download(
+        data=_xy_bytes.getvalue(),
+        filename=filename.rsplit(".", 1)[0] + ".xys",
+        mimetype="text/plain",
+        label="xy export",
+    )
+    xy_export
+    return (xy_export,)
+
+
+@app.cell
 def _(mo):
     # Make a button for adding the minimal data to a collecting plot that does not reload after adding a new file
     data_collection = {}
