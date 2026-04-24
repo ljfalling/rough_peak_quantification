@@ -13,6 +13,61 @@ def _():
 
 
 @app.cell
+def _(mo, pd, vamas_obj):
+    _rows = [
+        {
+            "block": i,
+            "date": f"{b.year}-{b.month:02d}-{b.day:02d} {b.hour:02d}:{b.minute:02d}",
+            "e_start (eV)": round(b.x_start, 2),
+            "e_end (eV)": round(b.x_step * b.num_y_values + b.x_start - b.x_step, 2),
+            "points": b.num_y_values,
+        }
+        for i, b in enumerate(vamas_obj.blocks)
+    ]
+    block_table = mo.ui.table(data=pd.DataFrame(_rows), selection="multi")
+    (mo.vstack([mo.md("**Select blocks for xy export:**"), block_table])
+     if len(vamas_obj.blocks) > 1 else mo.md(""))
+    return (block_table,)
+
+
+@app.cell
+def _(block_table, filename, mo, np, vamas_obj):
+    import io, zipfile
+
+    _base = filename.rsplit(".", 1)[0]
+
+    def _block_xy(block):
+        x = np.linspace(
+            block.x_start,
+            block.x_step * block.num_y_values + block.x_start - block.x_step,
+            block.num_y_values,
+        )
+        y = block.corresponding_variables[0].y_values
+        return "\n".join(f"{xi}\t{yi}" for xi, yi in zip(x, y))
+
+    if len(vamas_obj.blocks) == 1:
+        _selected = [0]
+    else:
+        _sel = block_table.value
+        _selected = [row["block"] for row in _sel] if _sel else []
+
+    if not _selected:
+        xy_export = mo.download(data=b"", filename=_base + ".xy", mimetype="text/plain", label="xy export", disabled=True)
+    elif len(_selected) == 1:
+        _data = _block_xy(vamas_obj.blocks[_selected[0]]).encode()
+        xy_export = mo.download(data=_data, filename=f"{_base}_block{_selected[0]}.xy", mimetype="text/plain", label="xy export")
+    else:
+        _buf = io.BytesIO()
+        with zipfile.ZipFile(_buf, "w") as _zf:
+            for _i in _selected:
+                _zf.writestr(f"{_base}_block{_i}.xy", _block_xy(vamas_obj.blocks[_i]))
+        xy_export = mo.download(data=_buf.getvalue(), filename=_base + ".zip", mimetype="application/zip", label="xy export")
+
+    xy_export
+    return (xy_export,)
+
+
+@app.cell
 def _(file_input):
     import tempfile
     with tempfile.NamedTemporaryFile(delete=False, suffix=".vms") as temp_file:
@@ -103,8 +158,9 @@ def _(file_input, filepath):
 
     vms = AesStaib(filepath)
     aes_pd_raw = pd.DataFrame(vms.aes_data, columns=['Kinetic energy / eV', 'Counts'])
+    vamas_obj = Vamas(filepath)
     print('data dimensions: ', aes_pd_raw.shape)
-    return AesStaib, Vamas, aes_pd_raw, filename, np, parser, pd, vms
+    return AesStaib, Vamas, aes_pd_raw, filename, np, parser, pd, vamas_obj, vms
 
 
 @app.cell
@@ -315,23 +371,6 @@ def _(aes_pd, mo):
     table = mo.ui.table(data=aes_pd[min_cols], page_size=5)
     mo.vstack([mo.md('**Table of the cropped and baseline corrected data:**'), table])
     return min_cols, table
-
-
-@app.cell
-def _(aes_pd, filename, mo):
-    import io
-    _xy_bytes = io.BytesIO()
-    aes_pd[["Kinetic energy / eV", "Background corrected counts"]].to_csv(
-        _xy_bytes, sep="\t", index=False, header=False
-    )
-    xy_export = mo.download(
-        data=_xy_bytes.getvalue(),
-        filename=filename.rsplit(".", 1)[0] + ".xys",
-        mimetype="text/plain",
-        label="xy export",
-    )
-    xy_export
-    return (xy_export,)
 
 
 @app.cell
